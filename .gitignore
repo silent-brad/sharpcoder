@@ -1,0 +1,15 @@
+*
+!.gitignore
+!THESIS.md
+!README.md
+!LICENSE
+
+!flake.nix
+!flake.lock
+
+!dune-project
+!sharpcoder.opam
+
+!bin/
+!bin/**
+

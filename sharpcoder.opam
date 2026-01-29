@@ -1,0 +1,6 @@
+opam-version: "2.0"
+name: "sharpcoder"
+version: "0.1.0"
+synopsis: "AI Coding Agent Designed to be a Code Sharp-shooter"
+maintainer: "Brad White"
+authors: "Brad White"
