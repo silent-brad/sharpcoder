@@ -1,4 +1,4 @@
 (executable
  (name main)
  (public_name sharpcoder)
- (libraries unix yojson))
+ (libraries unix yojson str))

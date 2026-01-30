@@ -1,93 +1,80 @@
-let read_env_file () =
-  let ic = open_in ".env" in
-  let rec read_lines acc =
-    try
-      let line = input_line ic in
-      if String.length line > 0 && line.[0] <> '#' then
-        match String.split_on_char '=' line with
-        | key :: rest -> 
-          let value = String.concat "=" rest in
-          read_lines ((String.trim key, String.trim value) :: acc)
-        | _ -> read_lines acc
-      else read_lines acc
-    with End_of_file ->
-      close_in ic;
-      acc
-  in
-  read_lines []
+open Tools
+open Llm
 
-let get_api_key () =
-  let env_vars = read_env_file () in
-  match List.assoc_opt "GEMINI_API_KEY" env_vars with
-  | Some key -> key
-  | None -> failwith "GEMINI_API_KEY not found in .env file"
+let you_color = "\027[94m"
+let assistant_color = "\027[93m"
+let reset_color = "\027[0m"
 
-let escape_json_string s =
-  let buf = Buffer.create (String.length s) in
-  String.iter (fun c ->
-    match c with
-    | '"' -> Buffer.add_string buf "\\\""
-    | '\\' -> Buffer.add_string buf "\\\\"
-    | '\n' -> Buffer.add_string buf "\\n"
-    | '\r' -> Buffer.add_string buf "\\r"
-    | '\t' -> Buffer.add_string buf "\\t"
-    | c -> Buffer.add_char buf c
-  ) s;
-  Buffer.contents buf
-
-let call_gemini api_key prompt =
-  let url = Printf.sprintf
-    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=%s"
-    api_key in
-  let body = Printf.sprintf {|{"contents": [{"parts": [{"text": "%s"}]}]}|}
-    (escape_json_string prompt) in
-  let tmp_file = Filename.temp_file "gemini" ".json" in
-  let oc = open_out tmp_file in
-  output_string oc body;
-  close_out oc;
-  let cmd = Printf.sprintf "curl -s -X POST '%s' -H 'Content-Type: application/json' -d @%s"
-    url tmp_file in
-  let ic = Unix.open_process_in cmd in
-  let buf = Buffer.create 1024 in
-  (try
-    while true do
-      Buffer.add_channel buf ic 1
-    done
-  with End_of_file -> ());
-  let _ = Unix.close_process_in ic in
-  Sys.remove tmp_file;
-  Buffer.contents buf
-
-let extract_text_from_response json_str =
+let get_arg args key default =
   let open Yojson.Basic.Util in
+  try args |> member key |> to_string
+  with _ -> default
+
+let execute_tool name args =
+  match name with
+  | "read_file" ->
+    let filename = get_arg args "filename" "." in
+    Printf.printf "Tool: read_file(%s)\n" filename;
+    (match read_file_tool filename with
+     | Some file -> Printf.sprintf {|{"path": "%s", "content": "%s"}|}
+                      file.file_path (Utils.escape_json_string file.content)
+     | None -> {|{"error": "file not found"}|})
+  | "list_files" ->
+    let path = get_arg args "path" "." in
+    Printf.printf "Tool: list_files(%s)\n" path;
+    (match list_files_tool path with
+     | Some files ->
+       let file_strs = List.map (fun f ->
+           Printf.sprintf {|{"path": "%s", "kind": "%s"}|} f.file_path f.file_kind
+         ) files.files in
+       Printf.sprintf {|{"path": "%s", "files": [%s]}|} files.path (String.concat ", " file_strs)
+     | None -> {|{"error": "path not found"}|})
+  | "edit_file" ->
+    let path = get_arg args "path" "." in
+    let old_str = get_arg args "old_str" "" in
+    let new_str = get_arg args "new_str" "" in
+    Printf.printf "Tool: edit_file(%s)\n" path;
+    let result = edit_file_tool path old_str new_str in
+    Printf.sprintf {|{"path": "%s", "action": "%s"}|} result.path result.action
+  | _ -> Printf.sprintf {|{"error": "unknown tool: %s"}|} name
+
+let run_coding_agent_loop () =
+  let system_prompt = get_full_system_prompt () in
+  print_endline system_prompt;
+  let conversation = ref [{ role = "user"; content = system_prompt }] in
+  
   try
-    let json = Yojson.Basic.from_string json_str in
-    json
-    |> member "candidates"
-    |> index 0
-    |> member "content"
-    |> member "parts"
-    |> index 0
-    |> member "text"
-    |> to_string
-  with _ ->
-    Printf.sprintf "Error parsing response: %s" json_str
+    while true do
+      Printf.printf "%sYou:%s " you_color reset_color;
+      flush stdout;
+      let user_input = input_line stdin in
+      conversation := !conversation @ [{ role = "user"; content = String.trim user_input }];
+      
+      let continue_loop = ref true in
+      while !continue_loop do
+        Printf.printf "[DEBUG] Calling LLM...\n%!";
+        let assistant_response = execute_llm_call !conversation in
+        Printf.printf "[DEBUG] Raw response: %s\n%!" assistant_response;
+        let tool_invocations = extract_tool_calls assistant_response in
+        Printf.printf "[DEBUG] Found %d tool calls\n%!" (List.length tool_invocations);
+        
+        if tool_invocations = [] then begin
+          Printf.printf "%sAssistant:%s %s\n%!" assistant_color reset_color assistant_response;
+          conversation := !conversation @ [{ role = "assistant"; content = assistant_response }];
+          continue_loop := false
+        end else begin
+          conversation := !conversation @ [{ role = "assistant"; content = assistant_response }];
+          List.iter (fun (name, args) ->
+              Printf.printf "[DEBUG] Executing tool: %s with args: %s\n%!" name (Yojson.Basic.to_string args);
+              let resp = execute_tool name args in
+              Printf.printf "[DEBUG] Tool result: %s\n%!" resp;
+              conversation := !conversation @ [{ role = "user"; content = Printf.sprintf "tool_result(%s)" resp }]
+            ) tool_invocations
+        end
+      done
+    done
+  with
+  | End_of_file -> print_endline "\nGoodbye!"
+  | Sys.Break -> print_endline "\nInterrupted."
 
-(*
-let () =
-  print_string "You: ";
-  flush stdout;
-  let prompt = input_line stdin in
-  let api_key = get_api_key () in
-  let response = call_gemini api_key prompt in
-  let text = extract_text_from_response response in
-  Printf.printf "\nGemini: %s\n" text
-*)
-
-let () =
-  let api_key = get_api_key () in
-  let prompt = "You are a Kierkegaardian scholar with a love for Shakespearian poetry. Write a poem about Abraham and his faith at Mount Moriah inspired by Kierkegaard's Fear and Trembling." in
-  let response = call_gemini api_key prompt in
-  let text = extract_text_from_response response in
-  Printf.printf "Response: %s\n" text
-
+let () = run_coding_agent_loop ()
