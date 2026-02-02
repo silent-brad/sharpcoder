@@ -1,6 +1,11 @@
 open Option
 open Str
 
+let run_shell_cmd_with_result cmd : string =
+  let ic = Unix.open_process_in cmd in
+  let output = input_line ic in
+  let _ = Unix.close_process_in ic in
+  output
 
 (* file.txt -> /User/path/to/project/file.txt *)
 let resolve_abs_path path_str =
@@ -149,6 +154,99 @@ let edit_file_tool filename old_str new_str : edit_file_result =
                 ; action = "file_not_found"
                 }
 
+(* Grep *)
+let grep_tool_desc =
+  {|Searches for a pattern in a file.
+:param path: The path to the file to search in.
+:param pattern: The pattern to search for.
+:return: A list of dictionaries with the path to the file and the line number where the pattern was found.|}
+
+type grep_result =
+  { path: string
+  ; line_number: int
+  }
+
+type grep_result_list =
+  { path: string
+  ; results: grep_result list
+  }
+
+let grep_tool filename pattern : grep_result_list option =
+  let full_path = resolve_abs_path filename in
+  if Sys.file_exists full_path then
+    let file_text = In_channel.with_open_text full_path In_channel.input_all in
+    let lines = Str.split (Str.regexp_string "\n") file_text in
+    let results = List.mapi (fun i line ->
+        let line_number = i + 1 in
+        let re = Str.regexp_string pattern in
+        if Str.string_match re line 0 then
+          { path = full_path
+          ; line_number = line_number
+          }
+        else
+          { path = full_path
+          ; line_number = -1
+          }
+      ) lines in
+    Some { path = full_path
+         ; results = results
+         }
+  else None
+
+(* SED *)
+let sed_tool_desc =
+  {|Searches for a pattern in a file and replaces it with a new string.
+:param path: The path to the file to search in.
+:param pattern: The pattern to search for.
+:param new_str: The string to replace the pattern with.
+:return: A list of dictionaries with the path to the file and the line number where the pattern was found.|}
+
+type sed_result =
+  { path: string
+  ; line_number: int
+  }
+
+type sed_result_list =
+  { path: string
+  ; results: sed_result list
+  }
+
+let sed_tool filename pattern new_str : sed_result_list =
+  let output = run_shell_cmd_with_result (Printf.sprintf "sed -i 's/%s/%s/g' %s" pattern new_str filename) in
+  let results = List.map (fun line ->
+      let re = Str.regexp_string pattern in
+      if Str.string_match re line 0 then
+        { path = filename
+        ; line_number = 1
+        }
+      else
+        { path = filename
+        ; line_number = -1
+        }
+    ) (Str.split (Str.regexp_string "\n") output) in
+  { path = filename
+  ; results = results
+  }
+
+(* Run NuShell Commands *)
+let run_nushell_cmd_tool_desc =
+  {|Runs a Nu shell command and returns the output.
+:param cmd: The command to run.
+:return: The output of the command.|}
+
+type run_nushell_cmd_result =
+  { cmd: string
+  ; output: string
+  }
+
+let run_nushell_cmd_tool cmd : run_nushell_cmd_result =
+  let cmd_in_quotes = Str.global_replace (Str.regexp_string "\"") "\\\"" cmd in
+  let nu_cmd = Printf.sprintf "nu -c \"%s\"" cmd_in_quotes in
+  let output = run_shell_cmd_with_result nu_cmd in
+  { cmd = nu_cmd
+  ; output = output
+  }
+
 (* Tool registry and system prompt generation *)
 
 type tool_info =
@@ -169,6 +267,18 @@ let tool_registry : tool_info list =
   ; { name = "edit_file"
     ; description = edit_file_tool_desc
     ; signature = "edit_file_tool : string -> string -> string -> edit_file_result"
+    }
+  ; { name = "grep"
+    ; description = grep_tool_desc
+    ; signature = "grep_tool : string -> string -> grep_result_list option"
+    }
+  ; { name = "sed"
+    ; description = sed_tool_desc
+    ; signature = "sed_tool : string -> string -> string -> sed_result_list"
+    }
+  ; { name = "run_nushell_cmd"
+    ; description = run_nushell_cmd_tool_desc
+    ; signature = "run_nushell_cmd_tool : string -> run_nushell_cmd_result"
     }
   ]
 

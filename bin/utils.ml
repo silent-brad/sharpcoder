@@ -5,7 +5,7 @@ let read_env_file () =
       let line = input_line ic in
       if String.length line > 0 && line.[0] <> '#' then
         match String.split_on_char '=' line with
-        | key :: rest -> 
+        | key :: rest ->
           let value = String.concat "=" rest in
           read_lines ((String.trim key, String.trim value) :: acc)
         | _ -> read_lines acc

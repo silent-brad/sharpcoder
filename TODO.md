@@ -1,3 +1,3 @@
 # TODO
-- [ ] Add Shell commands (use Nushell)
-- [ ] Add grep, sed tools..
+- [x] Add Shell commands (use Nushell)
+- [x] Add grep, sed tools..
