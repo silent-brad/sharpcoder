@@ -40,7 +40,11 @@ let extract_text_from_response json_str =
     Printf.sprintf "Error parsing response: %s" json_str
 
 let _system_prompt_template =
-  "You are a coding assistant whose goal it is to help us solve coding tasks.\nYou have access to a series of tools you can execute.\nWhen you want to use a tool, reply with exactly one line in the format: 'tool: TOOL_NAME({JSON_ARGS})' and nothing else.\nUse compact single-line JSON with double quotes. After receiving a tool_result(...) message, continue the task.\nIf no tool is needed, respond normally."
+  {|You are a coding assistant whose goal it is to help us solve coding tasks.
+  You have access to a series of tools you can execute.
+  When you want to use a tool, reply with exactly one line in the format: 'tool: TOOL_NAME({JSON_ARGS})' and nothing else.
+  Use compact single-line JSON with double quotes. After receiving a tool_result(...) message, continue the task.
+  If no tool is needed, respond normally.|}
 
 (* Extract JSON object starting at position, handling nested braces *)
 let extract_json_object text start =
@@ -68,7 +72,7 @@ let extract_json_object text start =
 
 (* Search for tool calls (which follow: `tool: tool_name({...})`) in text and return them as a list *)
 let extract_tool_calls text : (string * Yojson.Basic.t) list =
-  let re = Str.regexp {|tool:[ \t]*\([a-zA-Z0-9_]+\)(|} in
+  let re = Str.regexp {|<tool_call name="\([a-zA-Z0-9_]+\)">|} in
   let rec find_all start acc =
     try
       let _ = Str.search_forward re text start in
@@ -82,26 +86,6 @@ let extract_tool_calls text : (string * Yojson.Basic.t) list =
     with Not_found -> List.rev acc
   in
   find_all 0 []
-
-  (*
-let extract_tool_calls_from_json json =
-  let open Yojson.Basic.Util in
-  try
-    let json = Yojson.Basic.from_string json in
-    json
-    |> member "choices"
-    |> to_list
-    |> List.map (fun json ->
-      json
-      |> member "message"
-      |> member "content"
-      |> to_string
-      |> extract_tool_calls
-    )
-    |> List.flatten
-  with _ ->
-    Printf.sprintf "Error parsing response: %s" json
-*)
 
 type llm_call =
   { role: string

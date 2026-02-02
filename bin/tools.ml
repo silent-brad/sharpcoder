@@ -32,16 +32,6 @@ let read_file_tool filename : file option =
     }
   else None
 
-(*let () =
-  let file' = read_file_tool "text.txt" in
-  match file' with
-    | Some file'' ->
-      let path = file''.file_path in
-      let text = file''.content in
-      Printf.printf "File: %s\n" path;
-      Printf.printf "Text: %s\n" text
-    | None -> failwith "File not found."*)
-
 (* Acts as `ls` *)
 let file_list_tool_desc =
   {|Lists the files in a directory provided by the user.
@@ -77,23 +67,6 @@ let list_files_tool path : file_list option =
     ; files = files
     }
   else None
-
-(*
-let () =
-  let files = list_files_tool "text" in
-  match files with
-    | Some files' ->
-      let path = files'.path in
-      let files = files'.files in
-      Printf.printf "Path: %s\n" path;
-      List.iter (fun file ->
-          let file_path = file.file_path in
-          let kind = file.file_kind in
-          Printf.printf "File: %s\n" file_path;
-          Printf.printf "Type: %s\n" kind
-        ) files
-    | None -> failwith "Path not found."
-*)
 
 (* Edit file
  * Creates a new file when old_str is empty,
@@ -287,7 +260,6 @@ let run_nushell_cmd_tool cmd : run_nushell_cmd_result =
   }
 
 (* Tool registry and system prompt generation *)
-
 type tool_info =
   { name: string
   ; description: string
@@ -297,57 +269,61 @@ type tool_info =
 let tool_registry : tool_info list =
   [ { name = "read_file"
     ; description = read_file_tool_desc
-    ; signature = "read_file_tool : string -> file option"
+    ; signature = "read_file : string -> file option"
     }
   ; { name = "list_files"
     ; description = file_list_tool_desc
-    ; signature = "list_files_tool : string -> file_list option"
+    ; signature = "list_files : string -> file_list option"
     }
   ; { name = "edit_file"
     ; description = edit_file_tool_desc
-    ; signature = "edit_file_tool : string -> string -> string -> edit_file_result"
+    ; signature = "edit_file : string -> string -> string -> edit_file_result"
     }
   ; { name = "grep"
     ; description = grep_tool_desc
-    ; signature = "grep_tool : string -> string -> grep_result_list option"
+    ; signature = "grep : string -> string -> grep_result_list option"
     }
   ; { name = "sed"
     ; description = sed_tool_desc
-    ; signature = "sed_tool : string -> string -> string -> sed_result_list"
+    ; signature = "sed : string -> string -> string -> sed_result_list"
     }
   ; { name = "find"
     ; description = find_tool_desc
-    ; signature = "find_tool : string -> string -> find_result_list option"
+    ; signature = "find : string -> string -> find_result_list option"
     }
-  ; { name = "run_nushell_cmd"
+  ; { name = "nu"
     ; description = run_nushell_cmd_tool_desc
-    ; signature = "run_nushell_cmd_tool : string -> run_nushell_cmd_result"
+    ; signature = "nu: string -> run_nushell_cmd_result"
     }
   ]
 
 let get_tool_str_representation (tool : tool_info) : string =
-  Printf.sprintf "\nName: %s\nDescription: %s\nSignature: %s\n"
+  Printf.sprintf {|<tool name="%s">
+  <description>%s</description>
+  <signature>%s</signature>
+</tool>|}
     tool.name
     tool.description
     tool.signature
 
 let get_full_system_prompt () : string =
   let tool_str_repr = List.fold_left (fun acc tool ->
-      acc ^ "TOOL\n===" ^ (get_tool_str_representation tool) ^ "\n" ^ (String.make 15 '=') ^ "\n"
+      acc ^ (get_tool_str_representation tool) ^ "\n"
     ) "" tool_registry in
   Printf.sprintf
     {|You are an AI coding assistant. You have access to the following tools:
 
-%s
+<tools>
+%s</tools>
 
 IMPORTANT: When you need to use a tool, you MUST respond with ONLY a single line in this exact format:
-tool: TOOL_NAME({"arg1": "value1", "arg2": "value2"})
+<tool_call name="TOOL_NAME">{"arg1": "value1", "arg2": "value2"}</tool_call>
 
 Examples:
-- tool: read_file({"filename": "main.ml"})
-- tool: list_files({"path": "src"})
-- tool: edit_file({"path": "hello.lua", "old_str": "", "new_str": "print('Hello')"})
+- <tool_call name="read_file">{"filename": "main.ml"}</tool_call>
+- <tool_call name="list_files">{"path": "src"}</tool_call>
+- <tool_call name="edit_file">{"path": "hello.lua", "old_str": "", "new_str": "print('Hello')"}</tool_call>
 
 Do NOT use markdown code blocks. Do NOT add any other text on the tool line.
-After you receive a tool_result(...) message, continue your task or respond normally.
+After you receive a <tool_result>...</tool_result> message, continue your task or respond normally.
 If no tool is needed, respond with plain text.|} tool_str_repr
