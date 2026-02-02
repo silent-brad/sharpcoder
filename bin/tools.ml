@@ -228,6 +228,45 @@ let sed_tool filename pattern new_str : sed_result_list =
   ; results = results
   }
 
+(* Find *)
+let find_tool_desc =
+  {|Searches for a pattern in a file.
+:param path: The path to the file to search in.
+:param pattern: The pattern to search for.
+:return: A list of dictionaries with the path to the file and the line number where the pattern was found.|}
+
+type find_result =
+  { path: string
+  ; line_number: int
+  }
+
+type find_result_list =
+  { path: string
+  ; results: find_result list
+  }
+
+let find_tool filename pattern : find_result_list option =
+  let full_path = resolve_abs_path filename in
+  if Sys.file_exists full_path then
+    let file_text = In_channel.with_open_text full_path In_channel.input_all in
+    let lines = Str.split (Str.regexp_string "\n") file_text in
+    let results = List.mapi (fun i line ->
+        let line_number = i + 1 in
+        let re = Str.regexp_string pattern in
+        if Str.string_match re line 0 then
+          { path = full_path
+          ; line_number = line_number
+          }
+        else
+          { path = full_path
+          ; line_number = -1
+          }
+      ) lines in
+    Some { path = full_path
+         ; results = results
+         }
+  else None
+
 (* Run NuShell Commands *)
 let run_nushell_cmd_tool_desc =
   {|Runs a Nu shell command and returns the output.
@@ -275,6 +314,10 @@ let tool_registry : tool_info list =
   ; { name = "sed"
     ; description = sed_tool_desc
     ; signature = "sed_tool : string -> string -> string -> sed_result_list"
+    }
+  ; { name = "find"
+    ; description = find_tool_desc
+    ; signature = "find_tool : string -> string -> find_result_list option"
     }
   ; { name = "run_nushell_cmd"
     ; description = run_nushell_cmd_tool_desc
