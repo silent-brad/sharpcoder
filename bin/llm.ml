@@ -2,9 +2,10 @@ open Utils
 
 let call_gemini prompt =
   let api_key = get_api_key () in
+  let model_name = get_model_name () in
   let url = Printf.sprintf
-    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=%s"
-    api_key in
+    "https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s"
+    model_name api_key in
   let body = Printf.sprintf {|{"contents": [{"parts": [{"text": "%s"}]}]}|}
     (escape_json_string prompt) in
   let tmp_file = Filename.temp_file "gemini" ".json" in
@@ -94,9 +95,10 @@ type llm_call =
 
 let execute_llm_call (convo: llm_call list) : string =
   let api_key = get_api_key () in
+  let model_name = get_model_name () in
   let url = Printf.sprintf
-    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=%s"
-    api_key in
+    "https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s"
+    model_name api_key in
   let contents = List.map (fun msg ->
       Printf.sprintf {|{"role": "%s", "parts": [{"text": "%s"}]}|}
         (if msg.role = "assistant" then "model" else "user")

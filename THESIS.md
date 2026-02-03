@@ -24,3 +24,5 @@ NAME: SharpCoder
 - Porting codebases from slow/old/unreliable to new/fast/reliable tech stack?
 
 - Make sure to use basic shell lookup tools (like grep, find, sed)
+
+- Spec-driven development

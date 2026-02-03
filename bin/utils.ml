@@ -1,5 +1,6 @@
 let read_env_file () =
-  let ic = open_in ".env" in
+  let root_dir = Sys.getcwd () in
+  let ic = open_in (root_dir ^ "/.env") in
   let rec read_lines acc =
     try
       let line = input_line ic in
@@ -21,6 +22,12 @@ let get_api_key () =
   match List.assoc_opt "GEMINI_API_KEY" env_vars with
   | Some key -> key
   | None -> failwith "GEMINI_API_KEY not found in .env file"
+
+let get_model_name () =
+  let env_vars = read_env_file () in
+  match List.assoc_opt "MODEL" env_vars with
+  | Some key -> key
+  | None -> failwith "MODEL not found in .env file"
 
 let escape_json_string s =
   let buf = Buffer.create (String.length s) in
